@@ -1,0 +1,22 @@
+Kubernetes RBAC Analyzer report
+Subjects: 3; Permissions: 3; Dangerous permissions: 2; Subjects with dangerous permissions: 2
+
+Dangerous Roles/ClusterRoles (by content):
+  - ClusterRole dangerous-workload-writer
+      * [high] K8S-RBAC-002: Workload creation or mutation (Pods & controllers)
+  - Role prod/secret-reader
+      * [critical] K8S-RBAC-001: Read Secrets (get/list/watch on secrets)
+
+ServiceAccount build:ci
+  Scope: CLUSTER (all namespaces / cluster-wide)
+    - [DANGEROUS] apiGroups=['', 'apps', 'batch'] resources=['cronjobs', 'daemonsets', 'deployments', 'jobs', 'pods', 'replicasets', 'statefulsets'] verbs=['create', 'patch', 'update']
+        -> [high] K8S-RBAC-002: Workload creation or mutation (Pods & controllers)
+        source: ClusterRoleBinding ci-dangerous-binding -> ClusterRole dangerous-workload-writer
+  Workloads using this ServiceAccount:
+    - Deployment build/ci-runner (/mnt/data/k8s_rbac_analyzer/k8s_rbac_analyzer/examples/workloads/workloads.yaml)
+
+User alice@example.com
+  Scope: NAMESPACE prod
+    - [DANGEROUS] apiGroups=[''] resources=['secrets'] verbs=['get', 'list', 'watch']
+        -> [critical] K8S-RBAC-001: Read Secrets (get/list/watch on secrets)
+        source: RoleBinding prod/alice-secrets -> Role prod/secret-reader

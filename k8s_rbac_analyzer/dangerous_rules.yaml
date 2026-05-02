@@ -1,0 +1,251 @@
+# dangerous_rules.yaml
+# Конфигурация "опасных" RBAC-правил для статического анализатора.
+#
+# Идея:
+# - мы не считаем "*" автоматически опасным;
+# - мы считаем правило опасным, если оно пересекается с одним из детекторов ниже
+#   (опасные примитивы: чтение secrets, управление workload, impersonate/bind/escalate, nodes/proxy, webhooks, CSR, TokenRequest и т.д.)
+#
+# Поля:
+# - id: уникальный идентификатор детектора
+# - title: человеко-читаемое название
+# - severity: informational|low|medium|high|critical (любая строка)
+# - applies_to: any|cluster|namespace (ограничение по области действия grant'а)
+# - match:
+#     apiGroups: [...]
+#     resources: [...]
+#     verbs: [...]
+#     resourceNames: [...]          # опционально
+#     nonResourceURLs: [...]        # для non-resource endpoints
+#
+# В match допускаются glob-паттерны (fnmatch), например:
+#   resources: ["pods/*"] или nonResourceURLs: ["/healthz/*"]
+
+version: 1
+
+# Если захотите более "строго" фильтровать cluster-scoped ресурсы в namespace RoleBinding,
+# сюда можно положить базу ресурсов. В текущей версии анализатора этот список не используется
+# для фильтрации, но оставлен как задел под расширение (например, для UI/подсказок).
+cluster_scoped_resources:
+  - "nodes"
+  - "persistentvolumes"
+  - "storageclasses.storage.k8s.io"
+  - "customresourcedefinitions.apiextensions.k8s.io"
+  - "mutatingwebhookconfigurations.admissionregistration.k8s.io"
+  - "validatingwebhookconfigurations.admissionregistration.k8s.io"
+  - "clusterroles.rbac.authorization.k8s.io"
+  - "clusterrolebindings.rbac.authorization.k8s.io"
+  - "apiservices.apiregistration.k8s.io"
+
+# Allowlist для звёздочного задания:
+# если правило содержит '*' и попадает в allowlist, то оно НЕ будет помечено как опасное,
+# даже если пересекается с детектором.
+# Обычно используется для «шумных» ролей мониторинга/дискавери, которые имеют wildcard,
+# но не затрагивают выбранные опасные примитивы.
+wildcard_allowlist:
+  # Пример: доступ к метрикам (не секреты), часто встречается как wildcard на metrics API
+  - applies_to: cluster
+    match:
+      apiGroups: ["metrics.k8s.io"]
+      resources: ["*"]
+      verbs: ["get", "list", "watch"]
+
+dangerous_rules:
+
+  # --- Чтение секретов (чтение содержимого через get/list/watch) ---
+  - id: K8S-RBAC-001
+    title: "Read Secrets (get/list/watch on secrets)"
+    severity: critical
+    applies_to: any
+    rationale: "list/watch секретов раскрывает содержимое; это даёт доступ к токенам SA и другим сенситивам."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#listing-secrets"
+    match:
+      apiGroups: [""]
+      resources: ["secrets"]
+      verbs: ["get", "list", "watch", "*"]
+
+  # --- Создание/изменение workload'ов (потенциальная эскалация через запуск Pod от другого SA, монтирование Secret и т.п.) ---
+  - id: K8S-RBAC-002
+    title: "Workload creation or mutation (Pods & controllers)"
+    severity: high
+    applies_to: any
+    rationale: "Право создавать/менять workload'ы в namespace часто эквивалентно доступу к Secret/ConfigMap и API-правам SA в этом namespace."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#workload-creation"
+    match:
+      apiGroups: ["", "apps", "extensions", "batch"]
+      resources:
+        - "pods"
+        - "deployments"
+        - "statefulsets"
+        - "daemonsets"
+        - "replicasets"
+        - "jobs"
+        - "cronjobs"
+      verbs: ["create", "patch", "update", "delete", "deletecollection", "*"]
+
+  # --- Интерактивный доступ в Pod (exec/attach/portforward/ephemeralcontainers) ---
+  - id: K8S-RBAC-003
+    title: "Exec/Attach/PortForward/EphemeralContainers to pods"
+    severity: critical
+    applies_to: any
+    rationale: "Позволяет выполнять команды в контейнерах и извлекать секреты из окружения/томов."
+    match:
+      apiGroups: [""]
+      resources:
+        - "pods/exec"
+        - "pods/attach"
+        - "pods/portforward"
+        - "pods/ephemeralcontainers"
+      verbs: ["create", "update", "patch", "*"]
+
+  # --- TokenRequest: выпуск токенов для существующих serviceaccounts ---
+  - id: K8S-RBAC-004
+    title: "ServiceAccount TokenRequest (create on serviceaccounts/token)"
+    severity: critical
+    applies_to: any
+    rationale: "Позволяет выпускать токены для существующих serviceaccounts и, тем самым, получать их права."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#token-request"
+    match:
+      apiGroups: [""]
+      resources: ["serviceaccounts/token"]
+      verbs: ["create", "*"]
+
+  # --- CSR и выпуск сертификатов (эскалация до client cert) ---
+  - id: K8S-RBAC-005
+    title: "CSR create (certificatesigningrequests)"
+    severity: high
+    applies_to: cluster
+    rationale: "CSR API может использоваться для выпуска клиентских сертификатов; опасно в связке с approval."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#csrs-and-certificate-issuing"
+    match:
+      apiGroups: ["certificates.k8s.io"]
+      resources: ["certificatesigningrequests"]
+      verbs: ["create", "*"]
+
+  - id: K8S-RBAC-006
+    title: "CSR approval (certificatesigningrequests/approval)"
+    severity: critical
+    applies_to: cluster
+    rationale: "Approval CSRs для kube-apiserver-client signer позволяет выпускать произвольные client cert и эскалировать привилегии."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#csrs-and-certificate-issuing"
+    match:
+      apiGroups: ["certificates.k8s.io"]
+      resources: ["certificatesigningrequests/approval"]
+      verbs: ["update", "patch", "approve", "*"]
+
+  # --- Узко-специфичные RBAC-примитивы эскалации: escalate/bind/impersonate ---
+  - id: K8S-RBAC-007
+    title: "RBAC: escalate verb on roles/clusterroles"
+    severity: critical
+    applies_to: any
+    rationale: "escalate позволяет создавать/обновлять роли с правами выше собственных."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#escalate-verb"
+      - "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#restrictions-on-role-creation-or-update"
+    match:
+      apiGroups: ["rbac.authorization.k8s.io"]
+      resources: ["roles", "clusterroles"]
+      verbs: ["escalate", "*"]
+
+  - id: K8S-RBAC-008
+    title: "RBAC: bind verb on roles/clusterroles"
+    severity: critical
+    applies_to: any
+    rationale: "bind позволяет создавать биндинги к ролям с правами, которых нет у субъекта (обход защиты от эскалации)."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#bind-verb"
+      - "https://kubernetes.io/docs/reference/access-authn-authz/rbac/#restrictions-on-role-binding-creation-or-update"
+    match:
+      apiGroups: ["rbac.authorization.k8s.io"]
+      resources: ["roles", "clusterroles"]
+      verbs: ["bind", "*"]
+
+  - id: K8S-RBAC-009
+    title: "RBAC: impersonate verb"
+    severity: critical
+    applies_to: any
+    rationale: "impersonate даёт возможность действовать от имени другого пользователя/группы/SA."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#impersonate-verb"
+    match:
+      apiGroups: [""]
+      resources: ["users", "groups", "serviceaccounts", "userextras", "uids"]
+      verbs: ["impersonate", "*"]
+
+  # --- Контроль admission webhooks (Mutating/ValidatingWebhookConfiguration) ---
+  - id: K8S-RBAC-010
+    title: "Control admission webhooks (mutating/validating webhooks)"
+    severity: critical
+    applies_to: cluster
+    rationale: "Webhooks могут читать/мутировать объекты при admission, включая чувствительные данные."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#control-admission-webhooks"
+    match:
+      apiGroups: ["admissionregistration.k8s.io"]
+      resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+      verbs: ["create", "update", "patch", "delete", "*"]
+
+  # --- nodes/proxy -> доступ к Kubelet API (get не является read-only) ---
+  - id: K8S-RBAC-011
+    title: "Access Kubelet API via nodes/proxy"
+    severity: critical
+    applies_to: cluster
+    rationale: "get на nodes/proxy даёт доступ к Kubelet API (возможна команда на pod'ах, обход audit/admission)."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#access-to-proxy-subresource-of-nodes"
+    match:
+      apiGroups: [""]
+      resources: ["nodes/proxy"]
+      verbs: ["get", "*"]
+
+  # --- PersistentVolume creation -> hostPath и доступ к host filesystem ---
+  - id: K8S-RBAC-012
+    title: "PersistentVolume creation (hostPath risk)"
+    severity: high
+    applies_to: cluster
+    rationale: "Создание PV (в т.ч. hostPath) может дать доступ к host FS и привести к эскалации."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#persistent-volume-creation"
+    match:
+      apiGroups: [""]
+      resources: ["persistentvolumes"]
+      verbs: ["create", "update", "patch", "delete", "*"]
+
+  # --- Patch namespace labels -> обход Pod Security Admission / NetworkPolicy (в зависимости от настройки кластера) ---
+  - id: K8S-RBAC-013
+    title: "Namespace modification (patch namespaces)"
+    severity: medium
+    applies_to: any
+    rationale: "Patch namespace labels может ослабить Pod Security Admission или повлиять на NetworkPolicy через label-based правила."
+    references:
+      - "https://kubernetes.io/docs/concepts/security/rbac-good-practices/#namespace-modification"
+    match:
+      apiGroups: [""]
+      resources: ["namespaces"]
+      verbs: ["patch", "update", "*"]
+
+  # --- Изменение RBAC-объектов: роли/биндинги (часто используется для бэкдоров и эскалации) ---
+  - id: K8S-RBAC-014
+    title: "Modify RBAC objects (roles/bindings)"
+    severity: high
+    applies_to: any
+    rationale: "Запись в roles/rolebindings/clusterroles/clusterrolebindings часто является прямым путём к эскалации или закреплению."
+    match:
+      apiGroups: ["rbac.authorization.k8s.io"]
+      resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+      verbs: ["create", "update", "patch", "delete", "deletecollection", "*"]
+
+  # --- Небезопасные nonResourceURLs: полный wildcard ---
+  - id: K8S-RBAC-015
+    title: "nonResourceURLs wildcard (access to arbitrary non-resource endpoints)"
+    severity: medium
+    applies_to: cluster
+    rationale: "Wildcard доступ к non-resource endpoints может открывать метрики/healthz/логи control-plane и прочие чувствительные эндпоинты."
+    match:
+      nonResourceURLs: ["*"]
+      verbs: ["get", "*"]
