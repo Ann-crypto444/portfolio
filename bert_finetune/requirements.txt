@@ -1,0 +1,6 @@
+# Install PyTorch from https://pytorch.org/get-started/locally/ (choose your CUDA/CPU build)
+transformers>=4.41.0
+datasets>=2.19.0
+accelerate>=0.29.0
+evaluate>=0.4.1
+scikit-learn>=1.3.0
