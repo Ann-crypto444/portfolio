@@ -1,0 +1,22 @@
+<!-- Отдельная страница карточки брони. -->
+{{ define "page_booking" }}
+  {{ template "page_head" . }}
+
+  <p>
+    <a href="/" class="btn secondary">← Вернуться к поиску</a>
+  </p>
+
+  <section class="hero">
+    <h1>{{ .Title }}</h1>
+    <p class="muted">
+      Эта страница открывается как обычный HTML-документ.
+      HTMX-версии действий возвращают только карточку брони.
+    </p>
+  </section>
+
+  <section id="booking-panel" style="max-width: 760px;">
+    {{ template "partial_booking_panel" .Panel }}
+  </section>
+
+  {{ template "page_footer" . }}
+{{ end }}

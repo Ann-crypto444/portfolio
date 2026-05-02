@@ -1,0 +1,15 @@
+<!-- Общий footer для полноценных HTML-страниц. -->
+{{ define "page_footer" }}
+  </main>
+
+  <script>
+    document.body.addEventListener('htmx:beforeSwap', (e) => {
+      if (e.detail.xhr.status >= 400) {
+        e.detail.shouldSwap = true;
+        e.detail.isError = false;
+      }
+    });
+  </script>
+</body>
+</html>
+{{ end }}

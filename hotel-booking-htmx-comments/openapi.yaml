@@ -1,0 +1,221 @@
+openapi: 3.0.3
+info:
+  title: Hotel Booking Service - HTTP Contract
+  version: "1.0"
+  description: >
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /rooms/available:
+    get:
+      summary: Поиск свободных номеров
+      description: Возвращает список доступных номеров за выбранный период.
+      parameters:
+        - in: query
+          name: city
+          required: true
+          schema:
+            type: string
+          description: Город поиска
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Дата заезда
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Дата выезда
+        - in: query
+          name: guests
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Количество гостей
+        - in: query
+          name: min_price
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: max_price
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: HTML со списком найденных номеров или пустым результатом
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Некорректные параметры запроса
+        "422":
+          description: Ошибка бизнес-валидации параметров
+
+  /bookings/hold:
+    post:
+      summary: Создание временной брони
+      description: Создаёт hold для выбранного номера и возвращает HTML-карточку брони.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [room_id, from, to, guests, city]
+              properties:
+                room_id:
+                  type: string
+                from:
+                  type: string
+                  format: date
+                to:
+                  type: string
+                  format: date
+                guests:
+                  type: integer
+                  minimum: 1
+                city:
+                  type: string
+      responses:
+        "200":
+          description: Hold создан успешно
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Некорректные или неполные входные данные
+        "404":
+          description: Номер не найден
+        "409":
+          description: Номер недоступен или уже занят
+        "422":
+          description: Ошибка бизнес-валидации периода или вместимости
+        "500":
+          description: Внутренняя ошибка создания брони
+
+  /bookings/{id}:
+    get:
+      summary: Получение карточки брони по ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Карточка брони найдена
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Некорректный ID брони
+        "404":
+          description: Бронь не найдена
+        "500":
+          description: Внутренняя ошибка чтения брони
+
+  /bookings/{id}/confirm:
+    post:
+      summary: Подтверждение временной брони
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [first_name, second_name, phone, email]
+              properties:
+                first_name:
+                  type: string
+                second_name:
+                  type: string
+                phone:
+                  type: string
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Бронь подтверждена
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Некорректные данные гостя
+        "404":
+          description: Бронь не найдена
+        "409":
+          description: Hold истёк или статус брони не допускает подтверждение
+        "422":
+          description: Ошибка бизнес-валидации данных гостя
+        "500":
+          description: Внутренняя ошибка обновления брони
+
+  /bookings/{id}/cancel:
+    post:
+      summary: Отмена брони
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Бронь отменена
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Некорректный ID брони
+        "404":
+          description: Бронь не найдена
+        "409":
+          description: Бронь уже отменена
+        "500":
+          description: Внутренняя ошибка обновления состояния
+
+  /bookings/open:
+    get:
+      summary: Открытие карточки брони по ID
+      description: >
+        Вспомогательный UI-endpoint. Используется формой на главной странице:
+        принимает booking_id и перенаправляет пользователя на /bookings/{id}.
+      parameters:
+        - in: query
+          name: booking_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Переход на карточку брони
+        "303":
+          description: Переход на карточку брони
+        "400":
+          description: booking_id не передан
+        "404":
+          description: Бронь по такому ID не найдена

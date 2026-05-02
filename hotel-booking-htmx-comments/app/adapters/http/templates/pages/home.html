@@ -1,0 +1,94 @@
+<!-- Главная страница: форма поиска, результаты и панель брони. -->
+{{ define "page_home" }}
+  {{ template "page_head" . }}
+
+  <section class="hero">
+    <h1>Сервис бронирования отелей</h1>
+  </section>
+
+  <section class="layout">
+    <section class="stack">
+      <section class="card">
+        <h2>Поиск свободных номеров</h2>
+
+        <form
+          action="/rooms/available"
+          method="get"
+          hx-get="/rooms/available"
+          hx-target="#rooms-results"
+          hx-swap="innerHTML"
+          hx-push-url="true"
+          class="grid"
+        >
+          <div class="full">
+            <label for="city">Город</label>
+            <input id="city" name="city" value="{{ .Search.City }}">
+          </div>
+
+          <div>
+            <label for="from">Дата заезда</label>
+            <input id="from" type="date" name="from" value="{{ .Search.From }}">
+          </div>
+
+          <div>
+            <label for="to">Дата выезда</label>
+            <input id="to" type="date" name="to" value="{{ .Search.To }}">
+          </div>
+
+          <div>
+            <label for="guests">Гостей</label>
+            <input id="guests" type="number" min="1" name="guests" value="{{ .Search.Guests }}">
+          </div>
+
+          <div>
+            <label for="min_price">Минимальная цена</label>
+            <input id="min_price" type="number" min="0" name="min_price" value="{{ .Search.MinPrice }}">
+          </div>
+
+          <div class="full">
+            <label for="max_price">Максимальная цена</label>
+            <input id="max_price" type="number" min="0" name="max_price" value="{{ .Search.MaxPrice }}">
+          </div>
+
+          <div class="full">
+            <button type="submit">
+              Найти номера
+              <span class="htmx-indicator">Ищем...</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section id="rooms-results">
+        {{ template "partial_search_results" .Results }}
+      </section>
+    </section>
+
+    <aside class="stack">
+      <section class="card">
+        <h2>Открыть карточку брони по ID</h2>
+        <p class="muted">
+          В браузере можно вставить ID сюда. В Postman тот же ID нужно подставить прямо в URL:
+          <span class="mono">GET /bookings/{id}</span>.
+        </p>
+
+        <form action="/bookings/open" method="get" class="grid">
+          <div class="full">
+            <label for="booking_id">booking_id</label>
+            <input id="booking_id" name="booking_id" placeholder="например, booking-c7499c78">
+          </div>
+
+          <div class="full">
+            <button type="submit">Открыть карточку</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="booking-panel">
+        {{ template "partial_booking_panel" .BookingPanel }}
+      </section>
+    </aside>
+  </section>
+
+  {{ template "page_footer" . }}
+{{ end }}

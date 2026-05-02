@@ -1,0 +1,65 @@
+<!-- HTMX partial: результаты поиска свободных номеров. -->
+{{ define "partial_search_results" }}
+  {{ if .Error }}
+    <section class="card box-error">
+      <h3>{{ .Error.Title }}</h3>
+      <p>{{ .Error.Message }}</p>
+    </section>
+  {{ else if .Initial }}
+    <section class="card box-note">
+      <h3>Пока нет результатов</h3>
+      <p class="muted">
+        Заполни фильтры и нажми «Найти».
+        HTMX отправит GET-запрос и обновит только этот блок.
+      </p>
+    </section>
+  {{ else if not .Rooms }}
+    <section class="card box-note">
+      <h3>Ничего не найдено</h3>
+      <p class="muted">Попробуй изменить даты, цену или количество гостей.</p>
+    </section>
+  {{ else }}
+    <div class="list">
+      {{ range .Rooms }}
+        <section class="card">
+          <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div>
+              <h3 style="margin: 0 0 6px;">{{ .Room.HotelName }}</h3>
+              <div class="muted">{{ .Room.Address }}, {{ .Room.City }}</div>
+            </div>
+
+            <span class="pill">room_id: {{ .Room.ID }}</span>
+          </div>
+
+          <div class="meta">
+            <div><strong>Вместимость:</strong> {{ .Room.Capacity }} чел.</div>
+            <div><strong>Цена за ночь:</strong> {{ .Room.PricePerNight }} ₽</div>
+            <div><strong>Удобства:</strong> {{ join .Room.Amenities }}</div>
+            <div><strong>Итог за период:</strong> {{ .PriceTotal }} ₽</div>
+          </div>
+
+          <form
+            action="/bookings/hold"
+            method="post"
+            hx-post="/bookings/hold"
+            hx-target="#booking-panel"
+            hx-swap="innerHTML"
+          >
+            <input type="hidden" name="room_id" value="{{ .Room.ID }}">
+            <input type="hidden" name="from" value="{{ $.Form.From }}">
+            <input type="hidden" name="to" value="{{ $.Form.To }}">
+            <input type="hidden" name="guests" value="{{ $.Form.Guests }}">
+            <input type="hidden" name="city" value="{{ $.Form.City }}">
+            <input type="hidden" name="min_price" value="{{ $.Form.MinPrice }}">
+            <input type="hidden" name="max_price" value="{{ $.Form.MaxPrice }}">
+
+            <button type="submit">
+              Создать временную бронь (hold)
+              <span class="htmx-indicator">Отправляем...</span>
+            </button>
+          </form>
+        </section>
+      {{ end }}
+    </div>
+  {{ end }}
+{{ end }}

@@ -1,0 +1,137 @@
+<!-- HTMX partial: панель текущей брони или сообщения об ошибке. -->
+{{ define "partial_booking_panel" }}
+  {{ if .Initial }}
+    <section class="card box-note">
+      <h2>Бронь появится здесь</h2>
+      <p class="muted">
+        После выбора номера сервер создаст временную бронь и покажет карточку здесь.
+        Для Postman подставь свой ID прямо в URL <span class="mono">GET /bookings/{id}</span>.
+      </p>
+    </section>
+  {{ else }}
+    {{ if .Error }}
+      <section class="card box-error">
+        <h3>{{ .Error.Title }}</h3>
+        <p>{{ .Error.Message }}</p>
+      </section>
+    {{ end }}
+
+    {{ if .Booking }}
+      <section class="card">
+        <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <h2 style="margin: 0 0 6px;">Бронь {{ .Booking.ID }}</h2>
+            <div class="muted">{{ .Booking.Room.HotelName }} · {{ .Booking.Room.Address }}</div>
+          </div>
+
+          <span class="pill {{ statusClass .Booking.Status }}">
+            {{ statusLabel .Booking.Status }}
+          </span>
+        </div>
+
+        <div class="meta">
+          <div><strong>room_id:</strong> <span class="mono">{{ .Booking.Room.ID }}</span></div>
+          <div><strong>hotel_id:</strong> <span class="mono">{{ .Booking.Room.HotelID }}</span></div>
+          <div><strong>Период:</strong> {{ date .Booking.From }} → {{ date .Booking.To }}</div>
+          <div><strong>Гостей:</strong> {{ .Booking.Guests }}</div>
+          <div><strong>Цена за ночь:</strong> {{ .Booking.Room.PricePerNight }} ₽</div>
+          <div><strong>Цена за период:</strong> {{ .Booking.PriceTotal }} ₽</div>
+          <div><strong>Удобства:</strong> {{ join .Booking.Room.Amenities }}</div>
+          <div><strong>Статус:</strong> {{ statusLabel .Booking.Status }}</div>
+        </div>
+
+        {{ if .HoldExpired }}
+          <section class="card box-error">
+            <strong>Hold истёк:</strong> бронь нужно создать заново.
+          </section>
+        {{ else if eq .Booking.Status "hold" }}
+          <section class="card box-note">
+            <strong>Hold действует до:</strong> {{ dateTime .Booking.ExpiresAt }}
+          </section>
+        {{ else if eq .Booking.Status "confirmed" }}
+          <section class="card box-ok">
+            Бронь подтверждена и сохранена.
+          </section>
+        {{ end }}
+
+        {{ if .Booking.Guest }}
+          <section class="card box-note">
+            <h3>Данные гостя</h3>
+            <div><strong>Имя:</strong> {{ .Booking.Guest.FirstName }} {{ .Booking.Guest.SecondName }}</div>
+            <div><strong>Телефон:</strong> {{ .Booking.Guest.Phone }}</div>
+            <div><strong>Email:</strong> {{ .Booking.Guest.Email }}</div>
+          </section>
+        {{ end }}
+
+        {{ if .CanConfirm }}
+          <section class="card">
+            <h3>Подтвердить бронь</h3>
+
+            <form
+              action="/bookings/{{ .Booking.ID }}/confirm"
+              method="post"
+              hx-post="/bookings/{{ .Booking.ID }}/confirm"
+              hx-target="#booking-panel"
+              hx-swap="innerHTML"
+              class="grid"
+            >
+              <div>
+                <label for="first_name">Имя</label>
+                <input id="first_name" name="first_name" value="{{ .GuestForm.FirstName }}">
+              </div>
+
+              <div>
+                <label for="second_name">Фамилия</label>
+                <input id="second_name" name="second_name" value="{{ .GuestForm.SecondName }}">
+              </div>
+
+              <div>
+                <label for="phone">Телефон</label>
+                <input id="phone" name="phone" value="{{ .GuestForm.Phone }}">
+              </div>
+
+              <div>
+                <label for="email">Email</label>
+                <input id="email" name="email" value="{{ .GuestForm.Email }}">
+              </div>
+
+              <div class="full">
+                <button type="submit">
+                  Подтвердить бронь
+                  <span class="htmx-indicator">Сохраняем...</span>
+                </button>
+              </div>
+            </form>
+          </section>
+        {{ end }}
+
+        <div class="actions">
+          <a
+            class="btn secondary"
+            href="/bookings/{{ .Booking.ID }}"
+            hx-get="/bookings/{{ .Booking.ID }}"
+            hx-target="#booking-panel"
+            hx-swap="innerHTML"
+          >
+            Обновить карточку
+          </a>
+
+          {{ if .CanCancel }}
+            <form
+              action="/bookings/{{ .Booking.ID }}/cancel"
+              method="post"
+              hx-post="/bookings/{{ .Booking.ID }}/cancel"
+              hx-target="#booking-panel"
+              hx-swap="innerHTML"
+            >
+              <button type="submit" class="danger">
+                Отменить бронь
+                <span class="htmx-indicator">Отменяем...</span>
+              </button>
+            </form>
+          {{ end }}
+        </div>
+      </section>
+    {{ end }}
+  {{ end }}
+{{ end }}
